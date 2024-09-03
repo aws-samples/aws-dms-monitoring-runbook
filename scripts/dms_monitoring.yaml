@@ -1,0 +1,279 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to deploy 5 Lambda functions with scheduling via EventBridge.
+
+Parameters:
+  SnsTopicArn:
+    Type: String
+    Description: The ARN of the SNS topic to which the Lambda functions will publish notifications
+
+  S3BucketName:
+    Type: String
+    Description: Name of Amazon S3 bucket in the Region you are deploying the monitoring
+
+  DeployCDCDashboard:
+    Type: String
+    Default: "Yes"
+    AllowedValues: ["Yes", "No"]
+    Description: Setup CloudWatch Dashboard to monitor AWS DMS CDC Latency 
+
+  AlarmOnErrorWarningsInTask:
+    Type: String
+    Default: "Yes"
+    AllowedValues: ["Yes", "No"]
+    Description: Setup CloudWatch Alarm to receive alerts on AWS DMS Task Errors & Warnings
+
+  AlarmOnDMSResources:
+    Type: String
+    Default: "Yes"
+    AllowedValues: ["Yes", "No"]
+    Description: Setup CloudWatch Alarm to receive alerts on AWS DMS Instance resource utilizations
+
+  DMSInstanceDashboard:
+    Type: String
+    Default: "Yes"
+    AllowedValues: ["Yes", "No"]
+    Description: Setup consolidated CloudWatch Dashboard to monitor all AWS DMS Instance Resource consumptions 
+
+  DMSNotifications:
+    Type: String
+    Default: "Yes"
+    AllowedValues: ["Yes", "No"]
+    Description: Setup notification for AWS DMS Instance best practices (Public access/unused instances etc.)
+
+  CreateNewIAMRole:
+    Type: String
+    Default: "Yes"
+    AllowedValues: ["Yes"]
+    Description: Create a new IAM role with full permissions on DMS, CloudWatch, and CloudWatch Logs
+
+
+Conditions:
+  DeployCDCDashboardCondition: !Equals [!Ref DeployCDCDashboard, "Yes"]
+  AlarmOnErrorWarningsInTaskCondition: !Equals [!Ref AlarmOnErrorWarningsInTask, "Yes"]
+  AlarmOnDMSResourcesCondition: !Equals [!Ref AlarmOnDMSResources, "Yes"]
+  DMSInstanceDashboardCondition: !Equals [!Ref DMSInstanceDashboard, "Yes"]
+  DMSNotificationsCondition: !Equals [!Ref DMSNotifications, "Yes"]
+  CreateNewIAMRoleCondition: !Equals [!Ref CreateNewIAMRole, "Yes"]
+
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Condition: CreateNewIAMRoleCondition
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-LambdaExecutionRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-LambdaDMSCloudWatchPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - dms:Describe*
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:FilterLogEvents
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:PutDashboard
+                  - sns:Publish
+                Resource: "*"
+
+  # IAM Role for EventBridge Scheduler
+  SchedulerExecutionRole:
+    Type: AWS::IAM::Role
+    Condition: CreateNewIAMRoleCondition
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-SchedulerExecutionRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-Scheduler-Policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: "*"
+
+  LambdaFunction1:
+    Type: AWS::Lambda::Function
+    Condition: DeployCDCDashboardCondition
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-CDC-Dashboard"
+      Handler: dms_cdc_latency_dashboard.lambda_handler
+      Role: !If
+        - CreateNewIAMRoleCondition
+        - !GetAtt LambdaExecutionRole.Arn
+        - arn:aws:iam::853276114382:role/lambda-execution-role
+      Code:
+        S3Bucket: !Ref S3BucketName 
+        S3Key: dms_cdc_latency_dashboard.py.zip
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopicArn
+
+  LambdaFunction2:
+    Type: AWS::Lambda::Function
+    Condition: AlarmOnErrorWarningsInTaskCondition
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-ErrorNotifications"
+      Handler: dms_error_notifications.lambda_handler
+      Role: !If
+        - CreateNewIAMRoleCondition
+        - !GetAtt LambdaExecutionRole.Arn
+        - arn:aws:iam::853276114382:role/lambda-execution-role
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: dms_error_notifications.py.zip
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopicArn
+
+  LambdaFunction3:
+    Type: AWS::Lambda::Function
+    Condition: AlarmOnDMSResourcesCondition
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-DMS-Instance-Alarms"
+      Handler: dms_instance_alarms.lambda_handler
+      Role: !If
+        - CreateNewIAMRoleCondition
+        - !GetAtt LambdaExecutionRole.Arn
+        - arn:aws:iam::853276114382:role/lambda-execution-role
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: dms_instance_alarms.py.zip
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopicArn
+
+  LambdaFunction4:
+    Type: AWS::Lambda::Function
+    Condition: DMSInstanceDashboardCondition
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-DMS-Instances-Dashboard"
+      Handler: dms_instance_dashboard.lambda_handler
+      Role: !If
+        - CreateNewIAMRoleCondition
+        - !GetAtt LambdaExecutionRole.Arn
+        - arn:aws:iam::853276114382:role/lambda-execution-role
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: dms_instance_dashboard.py.zip
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopicArn
+
+  LambdaFunction5:
+    Type: AWS::Lambda::Function
+    Condition: DMSNotificationsCondition
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-Misc-Alerts"
+      Handler: dms_status_checks.lambda_handler
+      Role: !If
+        - CreateNewIAMRoleCondition
+        - !GetAtt LambdaExecutionRole.Arn
+        - arn:aws:iam::853276114382:role/lambda-execution-role
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: dms_status_checks.py.zip
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopicArn
+
+  # EventBridge Scheduler for Lambda Function 1 - Adjust the time to execute it once manually after deployment.
+  LambdaFunction1Scheduler:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub "${AWS::StackName}-Create-CDC-Dashboard"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      ScheduleExpression: 'at(2050-01-01T00:00:00)' 
+      Target:
+        Arn: !GetAtt LambdaFunction1.Arn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+
+  # EventBridge Scheduler for Lambda Function 2 - Run Hourly
+  LambdaFunction2Scheduler:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub "${AWS::StackName}-Schedule-ErrorNotifications"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      ScheduleExpression: 'cron(00 * * * ? *)' 
+      Target:
+        Arn: !GetAtt LambdaFunction2.Arn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+
+  # EventBridge Scheduler for Lambda Function 3 - Run Hourly
+  LambdaFunction3Scheduler:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub "${AWS::StackName}-Schedule-DMS-Instance-Alarms"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      ScheduleExpression: 'cron(00 * * * ? *)'
+      Target:
+        Arn: !GetAtt LambdaFunction3.Arn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+
+  # EventBridge Scheduler for Lambda Function 4 - Adjust the time to execute it once manually after deployment.
+  LambdaFunction4Scheduler:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub "${AWS::StackName}-Create-DMS-Instances-Dashboard"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      ScheduleExpression: 'at(2050-01-01T00:00:00)'
+      Target:
+        Arn: !GetAtt LambdaFunction4.Arn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+
+  # EventBridge Scheduler for Lambda Function 5 - Run everyday at 10 AM 
+  LambdaFunction5Scheduler:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub "${AWS::StackName}-Schedule-Misc-Alerts"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      ScheduleExpression: 'cron(00 10 * * ? *)'
+      Target:
+        Arn: !GetAtt LambdaFunction5.Arn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+
+  DMSTaskEventSubscription:
+    Type: AWS::DMS::EventSubscription
+    Properties:
+      SubscriptionName: !Sub "${AWS::StackName}-DMSTasksSubscription"
+      Enabled: true
+      SourceType: replication-task
+      SnsTopicArn: !Ref SnsTopicArn
+  DMSInstanceEventSubscription:
+    Type: AWS::DMS::EventSubscription
+    Properties:
+      SubscriptionName: !Sub "${AWS::StackName}-DMSInstancesSubscription"
+      SnsTopicArn: !Ref SnsTopicArn
+      SourceType: replication-instance
+      Enabled: true
