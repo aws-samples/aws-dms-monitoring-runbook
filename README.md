@@ -53,7 +53,7 @@ All monitoring placed by the solution are fully customizable where users can cho
 
  ![CloudFormation Resources](images/CFN_resource_list.png)
 
-Refer to complete runbook for step by step guidance.  ![Runbook](DMS_Monitoring_Runbook.pdf)
+Refer to complete runbook for step by step guidance.  [Runbook](DMS_Monitoring_Runbook.pdf)
 
 ## Clean up
 
