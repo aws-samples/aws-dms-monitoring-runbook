@@ -53,6 +53,8 @@ All monitoring placed by the solution are fully customizable where users can cho
 
  ![CloudFormation Resources](images/CFN_resource_list.png)
 
+Refer to complete runbook for step by step guidance.  ![Runbook](DMS_Monitoring_Runbook.pdf)
+
 ## Clean up
 
 Delete Amazon CloudFormation stack to remove all resources deployed as part of this solution.
@@ -60,111 +62,6 @@ Delete Amazon CloudFormation stack to remove all resources deployed as part of t
 
 
 
-
-## Appendix
-
-
-**1.  Centralized Amazon CloudWatch dashboard for AWS DMS Replication Instances**
-
-Objective:
-
-To provide a consolidated view of key metrics (CPU, Memory, Swap, and CapacityUtilization) for all AWS DMS replication instances.
-
-Steps:
-
-* A Python script leverages the AWS SDK (Boto3) to query CloudWatch metrics for each DMS replication instance.
-* The script creates a CloudWatch dashboard that includes widgets for:
-    * CPU Utilization: Tracks the percentage of CPU resources used.
-    * Freeable Memory: Shows the amount of memory available for the replication instance.
-    * Swap Usage: Displays the swap memory usage.
-    * CapacityUtilization: Monitors the percentage of memory used by the DMS serverless replication.
-
-
-
-Outcome:
-
-A single CloudWatch dashboard with a consolidated view of critical metrics for each replication instance, enabling quick assessment of resource utilization and potential bottlenecks.
-
- ![CloudFormation Resources](images/DMS_Instance_Dashboard.png)
-
-
-**2. Centralized Amazon CloudWatch dashboard for DMS task CDC Metrics**
-
-Objective:
-
-To monitor and consolidate the Change Data Capture (CDC) lag metrics across all DMS tasks associated with each replication instance.
-
-Steps:
-
-* The Python script fetches CDC metrics (CDCSourceLatency and CDCLatencyTarget) for each DMS task. 
-* You can also select your own set of metrics to monitoring via Lambda parameter input.
-* A separate CloudWatch dashboard is  created to displaying these task metrics for each instance.
-
-
-
-Outcome:
-
-A consolidated view of CDC lag metrics, enabling real-time monitoring of data replication delays, helping in proactive management of data consistency and synchronization.
-
-  ![DMS CDC dashboard](images/DMS_CDC_Dashboard.png)
-
-
-
-**3. CloudFormation Template for DMS Instance and Task Event Subscription**
-
-Objective:
-
-To automate the creation of event subscriptions for DMS instances and tasks using AWS CloudFormation.
-
-Steps:
-
-* A CloudFormation template is provided to create event subscriptions for AWS DMS instances and tasks.
-* The event subscriptions allow users to receive notifications for important events like task failures, replication instance issues, and more.
-
-Outcome:
-
-Automated deployment of event subscriptions ensures that users are promptly notified of any critical events affecting their DMS tasks and instances, enabling faster response times to issues.
-
-  ![DMS Event Subscription](images/Event_Notifications.png)
-
-
-**4. CloudWatch Alerts for Errors and Warnings in DMS Tasks**
-
-Objective:
-
-To set up automated alerts for errors and warnings detected in DMS tasks, ensuring that potential issues are quickly identified and addressed.
-
-Steps:
-
-* A Python script scans the CloudWatch logs for error and warning messages related to DMS tasks.
-* CloudWatch alarms are configured to trigger SNS notifications whenever an error or warning is detected.
-* The alarms can be fine-tuned to match specific log patterns or keywords indicative of issues in DMS tasks.
-* By default, script scheduled on AWS EventBridge scheduler to run every hour. Users can customize the frequency.
-
-Outcome:
-
-Alerts for errors and warnings in DMS tasks enable quick identification and resolution of issues, minimizing downtime and ensuring smooth operation of data migration tasks.
-
-  ![DMS Alerts for Errors & Warnings](images/DMS_Task_Error_alerts.png)
-
-
-**5. DMS Instances and DMS tasks best practice alerts**
-
-Objective:
-
-To identify and alert users on few best practices. For example, this will alert user if there are DMS Instance with public access enabled or DMS task with debug logging enabled or DMS Instance running without any active task on it.
-
-Steps:
-
-* The Python script checks the activity and resource utilization of DMS classic instances.
-* Alerts are sent via SNS to notify users about these instances, allowing for manual review and take necessary actions.
-* By default, script scheduled on AWS EventBridge scheduler to run every hour. Users can customize the frequency.
-
-Outcome:
-
-Automated monitoring and alerts for unused DMS classic instances lead to better resource management and cost savings by preventing unnecessary charges for idle instances.
-
- ![Bestpractices Alerts](images/DMS_Bestpractices_Alerts.png)
 
 
 ## Security
